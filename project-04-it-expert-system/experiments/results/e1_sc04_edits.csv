@@ -1,0 +1,8 @@
+﻿edit,change,candidates,rules_fired,ranking,status
+M0,none (full rule base),"{CAUSE02, CAUSE03}","R005,R042,R007,R008,R043",CAUSE02 = CAUSE03,ambiguous
+M1,remove R007 (README example),"{CAUSE02, CAUSE03}","R005,R042,R008,R043",CAUSE02 > CAUSE03,resolved
+M2,"remove R042, R043 (the one-symptom SYM03 rules)","{CAUSE02, CAUSE03}","R005,R007,R008",CAUSE02 = CAUSE03,ambiguous
+M3,"remove R007, R008, R043 (every CAUSE03 rule that fires)",{CAUSE02},"R005,R042",CAUSE02,single_cause
+M4,"remove R005, R042 (every CAUSE02 rule that fires)",{CAUSE03},"R007,R008,R043",CAUSE03,single_cause
+M5,modify R005: also require SYM05 (driver fault must be laptop-specific),"{CAUSE02, CAUSE03}","R007,R008,R043,R042",CAUSE03 > CAUSE02,resolved
+M6,modify R007: also require SYM02 (AP fault must show missing SSIDs),"{CAUSE02, CAUSE03}","R005,R042,R008,R043",CAUSE02 > CAUSE03,resolved

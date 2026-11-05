@@ -1,0 +1,14 @@
+﻿fixture,withheld,full,without,effect
+SC01_single_cause_portal_loop,SYM01,single_cause {CAUSE01},single_cause {CAUSE01},same
+SC01_single_cause_portal_loop,SYM06,single_cause {CAUSE01},single_cause {CAUSE01},same
+SC02_single_cause_printer_offline,SYM22,resolved {CAUSE13},insufficient_evidence {},changed
+SC02_single_cause_printer_offline,SYM23,resolved {CAUSE13},"ambiguous {CAUSE13, CAUSE14}",changed
+SC04_ambiguous_wifi_drop,SYM03,"ambiguous {CAUSE02, CAUSE03}",single_cause {CAUSE03},changed
+SC04_ambiguous_wifi_drop,SYM04,"ambiguous {CAUSE02, CAUSE03}","ambiguous {CAUSE02, CAUSE03}",same
+SC05_ambiguous_account_locked,SYM19,single_cause {CAUSE11},single_cause {CAUSE11},same
+SC05_ambiguous_account_locked,SYM20,single_cause {CAUSE11},single_cause {CAUSE11},same
+SC07_contradictory_printer,SYM22,"contradictory {CAUSE13, CAUSE14}","multi_fault {CAUSE13, CAUSE14}",changed
+SC07_contradictory_printer,SYM25,"contradictory {CAUSE13, CAUSE14}",contradictory {CAUSE14},changed
+SC07_contradictory_printer,SYM26,"contradictory {CAUSE13, CAUSE14}",contradictory {CAUSE13},changed
+SC15_lms_session_timeout,SYM09,single_cause {CAUSE05},insufficient_evidence {},changed
+SC15_lms_session_timeout,SYM11,single_cause {CAUSE05},single_cause {CAUSE05},same

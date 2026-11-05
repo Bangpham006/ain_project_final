@@ -1,0 +1,16 @@
+﻿fixture,labelled_class,status,candidates,expected_causes,match,rules_fired,rules_named_in_text,fired_but_not_named
+SC01_single_cause_portal_loop,single_cause,single_cause,{CAUSE01},{CAUSE01},yes,"R001,R002,R003","R001,R003",R002
+SC02_single_cause_printer_offline,single_cause,resolved,"{CAUSE13, CAUSE14}","{CAUSE13, CAUSE14}",yes,"R034,R035,R036",,
+SC03_single_cause_lms_not_enrolled,single_cause,single_cause,{CAUSE04},{CAUSE04},yes,R010,R010,
+SC04_ambiguous_wifi_drop,ambiguous,ambiguous,"{CAUSE02, CAUSE03}","{CAUSE02, CAUSE03}",yes,"R005,R042,R007,R008,R043","R005,R007","R042,R008,R043"
+SC05_ambiguous_account_locked,ambiguous,single_cause,{CAUSE11},{CAUSE11},yes,"R027,R028,R029","R027,R028",R029
+SC06_missing_info_no_symptoms,missing_info,insufficient_evidence,{},{},yes,,,
+SC07_contradictory_printer,contradictory_symptoms,contradictory,"{CAUSE13, CAUSE14}","{CAUSE13, CAUSE14}",yes,"R034,R039,R036,R041",,
+SC08_lab_grub_error,single_cause,single_cause,{CAUSE07},{CAUSE07},yes,R017,R017,
+SC09_lab_no_network,single_cause,single_cause,{CAUSE08},{CAUSE08},yes,R019,R019,
+SC10_projector_hdmi,single_cause,single_cause,{CAUSE09},{CAUSE09},yes,R022,R022,
+SC11_password_expired,single_cause,single_cause,{CAUSE10},{CAUSE10},yes,R025,R025,
+SC12_submission_size_exceeded,single_cause,single_cause,{CAUSE06},{CAUSE06},yes,R015,R015,
+SC13_wifi_laptop_only,ambiguous,single_cause,{CAUSE02},{CAUSE02},yes,R006,R006,
+SC14_office365_unlicensed,single_cause,single_cause,{CAUSE12},{CAUSE12},yes,R030,R030,
+SC15_lms_session_timeout,single_cause,single_cause,{CAUSE05},{CAUSE05},yes,"R013,R014","R013,R014",

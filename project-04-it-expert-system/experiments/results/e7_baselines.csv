@@ -1,0 +1,7 @@
+﻿inputs,method,mean recall,inputs with ≥2 supported causes where some are hidden,inputs with an unsupported guess,inputs whose answer changes if the rule file is reversed
+fixtures,forward chaining (ours),1.000,0,0,0
+fixtures,first-match baseline,0.893,3,0,3
+fixtures,best-partial-match baseline,0.893,3,0,3
+exhaustive,forward chaining (ours),1.000,0,0,0
+exhaustive,first-match baseline,0.584,162,0,118
+exhaustive,best-partial-match baseline,0.584,162,4,122

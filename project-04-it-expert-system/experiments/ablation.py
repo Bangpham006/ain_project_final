@@ -1,0 +1,643 @@
+"""Ablation study for Project 04 (rule-removal / rule-modification experiments).
+
+Run from anywhere:   python experiments/ablation.py [output_dir]
+Writes to:           experiments/results/ by default (CSV tables, ablation_report.md, PNG figures)
+
+Questions answered (one numbered section each):
+
+E0  Baseline: what does the full rule base conclude for the 15 fixtures, and does
+    it agree with what each fixture's `expected_behavior` text says?
+E1  The README's experiment: how does the ambiguous Wi-Fi fixture move from a
+    multi-cause tie to a single cause when targeted rules are removed or modified?
+E2  Diagnostic sensitivity to the rule base: leave-one-rule-out on the fixtures.
+E3  The same leave-one-out over *every* within-domain symptom set (exhaustive).
+E4  Random k-rule ablation curve: how fast do recall and decisiveness degrade?
+E5  Diagnostic sensitivity to the evidence: drop one reported symptom at a time.
+E6  Conflict-resolution behaviour: do different strategies pick the same cause?
+E7  Controlled comparison against naive baseline engines.
+E8  Formal boundaries: monotonicity, order-independence, and contradiction.
+E9  Audit: rules and fixtures that depend on a contradictory symptom pair.
+
+The conflict-resolution strategy used for statuses is `student_core.DEFAULT_STRATEGY`.
+Everything is deterministic (seed 42).
+"""
+
+from __future__ import annotations
+
+import csv
+import itertools
+import random
+import re
+import sys
+from collections import Counter, defaultdict
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "starter"))
+
+import conflicts as conflicts_mod  # noqa: E402
+import rule_loader  # noqa: E402
+import student_core as core  # noqa: E402
+
+# Windows consoles and pipes default to cp1252, which cannot print the report's ∧ → ≥ symbols.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "experiments" / "results"
+SEED = 42
+
+KB = rule_loader.load_all(ROOT / "data")
+RULES = KB["rules"]
+SYMPTOMS = KB["symptoms"]
+CAUSES = {c["id"]: c for c in KB["causes"]}
+SCENARIOS = KB["scenarios"]
+CONFLICTS = conflicts_mod.load_conflicts(ROOT / "data" / "conflicts.json", {s["id"] for s in SYMPTOMS})
+RULE_IDS = [r["id"] for r in RULES]
+RULE_THEN = {r["id"]: r["then"] for r in RULES}
+SC04 = next(s for s in SCENARIOS if s["class"] == "ambiguous" and s["id"].startswith("SC04"))
+SC07 = next(s for s in SCENARIOS if s["class"] == "contradictory_symptoms")
+
+REPORT: list[str] = []
+
+
+# --------------------------------------------------------------------------- #
+# helpers
+# --------------------------------------------------------------------------- #
+def emit(line: str = "") -> None:
+    print(line)
+    REPORT.append(line)
+
+
+def table(headers: list[str], rows: list[list]) -> None:
+    emit("| " + " | ".join(headers) + " |")
+    emit("|" + "|".join("---" for _ in headers) + "|")
+    for row in rows:
+        emit("| " + " | ".join(str(c) for c in row) + " |")
+    emit()
+
+
+def write_csv(name: str, headers: list[str], rows: list[list]) -> None:
+    OUT.mkdir(parents=True, exist_ok=True)
+    with (OUT / name).open("w", newline="", encoding="utf-8-sig") as fh:  # BOM so Excel reads UTF-8
+        writer = csv.writer(fh)
+        writer.writerow(headers)
+        writer.writerows(rows)
+
+
+def cause_set(symptoms, rules) -> frozenset[str]:
+    return frozenset(r["cause_id"] for r in core.infer(list(symptoms), rules))
+
+
+def report_of(symptoms, rules) -> dict:
+    return core.diagnose(list(symptoms), rules, CONFLICTS)
+
+
+def status(symptoms, rules) -> str:
+    return report_of(symptoms, rules)["status"]
+
+
+def without(rule_ids) -> list[dict]:
+    return [r for r in RULES if r["id"] not in set(rule_ids)]
+
+
+def with_premise_added(rule_id: str, symptom: str) -> list[dict]:
+    """Rule-base copy where `rule_id` additionally requires `symptom`."""
+    return [dict(r, **{"if": r["if"] + [symptom]}) if r["id"] == rule_id else r for r in RULES]
+
+
+def fmt(causes) -> str:
+    causes = list(causes)
+    return "{" + ", ".join(sorted(causes)) + "}" if causes else "{}"
+
+
+def fmt_ranking(rankings) -> str:
+    """[[['CAUSE02'], ['CAUSE03']]] -> 'CAUSE02 > CAUSE03';  ties shown as '='."""
+    return "; ".join(" > ".join(" = ".join(tier) for tier in ranking) for ranking in rankings) or "-"
+
+
+def within_domain_symptom_sets() -> list[tuple[str, ...]]:
+    by_domain: dict[str, list[str]] = defaultdict(list)
+    for s in SYMPTOMS:
+        by_domain[s["domain"]].append(s["id"])
+    seen: set[tuple[str, ...]] = set()
+    for ids in by_domain.values():
+        for k in range(len(ids) + 1):
+            seen.update(itertools.combinations(sorted(ids), k))
+    return sorted(seen, key=lambda t: (len(t), t))
+
+
+SETS = within_domain_symptom_sets()
+
+# --------------------------------------------------------------------------- #
+emit("# Project 04 -- ablation report (generated by experiments/ablation.py)")
+emit()
+emit(
+    f"Rules: {len(RULES)}  |  symptoms: {len(SYMPTOMS)}  |  causes: {len(CAUSES)}  |  fixtures: {len(SCENARIOS)}  "
+    f"|  conflict pairs: {len(CONFLICTS)}  |  conflict resolution: `{core.DEFAULT_STRATEGY}`  |  seed: {SEED}"
+)
+emit()
+emit(
+    "Two views are reported throughout. **Candidates** = every cause some fired rule concludes "
+    "(`infer`, no premature elimination). **Status** = what `diagnose` makes of them after conflict "
+    "resolution: `single_cause`, `resolved` (rivals exist but one is preferred), `ambiguous` (rivals tie), "
+    "`multi_fault` (independent faults), `contradictory`, `insufficient_evidence`."
+)
+emit()
+
+# ---- E0 -------------------------------------------------------------------- #
+emit("## E0. Baseline on the 15 fixtures, checked against each fixture's own text")
+emit()
+gold: dict[str, frozenset[str]] = {}
+base_rows, base_csv = [], []
+for sc in SCENARIOS:
+    rep = report_of(sc["presented_symptoms"], RULES)
+    text = sc.get("expected_behavior", "")
+    expected = frozenset(re.findall(r"CAUSE\d{2}", text))
+    named_rules = re.findall(r"R\d{3}", text)
+    fired = [rid for r in rep["results"] for rid in r["fired_rules"]]
+    found = frozenset(r["cause_id"] for r in rep["results"])
+    gold[sc["id"]] = expected
+    extra = [rid for rid in fired if rid not in named_rules] if named_rules else []
+    row = [
+        sc["id"],
+        sc["class"],
+        rep["status"],
+        fmt(found),
+        fmt(expected),
+        "yes" if found == expected else "**NO**",
+        ",".join(named_rules) or "-",
+        ",".join(extra) or "-",
+    ]
+    base_rows.append(row)
+    base_csv.append(row[:6] + [",".join(fired), ",".join(named_rules), ",".join(extra)])
+table(
+    ["fixture", "labelled class", "status", "candidates", "causes named in text", "match",
+     "rules named in text", "also fired (not named)"],
+    base_rows,
+)
+write_csv(
+    "e0_baseline.csv",
+    ["fixture", "labelled_class", "status", "candidates", "expected_causes", "match", "rules_fired",
+     "rules_named_in_text", "fired_but_not_named"],
+    base_csv,
+)
+n_match = sum(1 for r in base_rows if r[5] == "yes")
+emit(
+    f"Candidate causes match the causes named in `expected_behavior` on **{n_match}/{len(SCENARIOS)}** fixtures. "
+    "The text sometimes names fewer rules than actually fire (last column): those extra rules are "
+    "subsumed one-symptom rules that conclude the same cause."
+)
+emit()
+label_count = {"single_cause": 1, "ambiguous": 2, "missing_info": 0}
+mismatch = [
+    f"{sc['id']} (labelled `{sc['class']}`, {len(core.infer(sc['presented_symptoms'], RULES))} candidate(s))"
+    for sc in SCENARIOS
+    if sc["class"] in label_count
+    and min(len(core.infer(sc["presented_symptoms"], RULES)), 2) != label_count[sc["class"]]
+]
+emit("Fixtures whose `class` label disagrees with the number of candidates the rules produce: " + "; ".join(mismatch) + ".")
+emit()
+
+# ---- E1 -------------------------------------------------------------------- #
+emit("## E1. The README's experiment: from multi-cause ambiguity to a single cause")
+emit()
+s04 = SC04["presented_symptoms"]
+emit(f"Fixture `{SC04['id']}`, symptoms {s04}. Each row edits the rule base, then re-diagnoses.")
+emit()
+edits = [
+    ("M0", "none (full rule base)", RULES),
+    ("M1", "remove R007 (README example)", without({"R007"})),
+    ("M2", "remove R042, R043 (the one-symptom SYM03 rules)", without({"R042", "R043"})),
+    ("M3", "remove R007, R008, R043 (every CAUSE03 rule that fires)", without({"R007", "R008", "R043"})),
+    ("M4", "remove R005, R042 (every CAUSE02 rule that fires)", without({"R005", "R042"})),
+    ("M5", "modify R005: also require SYM05 (driver fault must be laptop-specific)", with_premise_added("R005", "SYM05")),
+    ("M6", "modify R007: also require SYM02 (AP fault must show missing SSIDs)", with_premise_added("R007", "SYM02")),
+]
+e1_rows = []
+for code, label, rules in edits:
+    rep = report_of(s04, rules)
+    fired = [rid for r in rep["results"] for rid in r["fired_rules"]]
+    e1_rows.append([code, label, fmt(r["cause_id"] for r in rep["results"]), ",".join(fired),
+                    fmt_ranking(rep["rankings"]), f"**{rep['status']}**"])
+table(["edit", "change", "candidates", "rules fired", "ranking (specificity)", "status"], e1_rows)
+write_csv("e1_sc04_edits.csv", ["edit", "change", "candidates", "rules_fired", "ranking", "status"],
+          [[c.replace("*", "") for c in row] for row in e1_rows])
+emit(
+    "Reading. Under the *candidate* view, removing R007 alone changes nothing: CAUSE03 is still "
+    "concluded by R008 and R043, and the engine must not drop it. Under *conflict resolution* the same "
+    "edit is decisive: R007 was CAUSE03's only two-premise rule, so CAUSE02 (backed by the two-premise "
+    "R005) becomes the single preferred cause, with CAUSE03 kept as an alternative (M1). Eliminating a "
+    "rival from the candidates requires removing every rule of it that fires (M3, M4). Removing the "
+    "one-symptom rules R042/R043 does not break the tie (M2), because the tie lives in the identical "
+    "two-premise pair R005/R007. Modifying a rule to demand discriminating evidence (M5, M6) breaks the "
+    "tie in a domain-motivated way rather than by deletion."
+)
+emit()
+emit("Minimal rule subsets (among the rules that fired) whose removal leaves exactly one *candidate*, for every fixture with rival candidates:")
+emit()
+e1b_rows = []
+for sc in SCENARIOS:
+    results = core.infer(sc["presented_symptoms"], RULES)
+    if len(results) < 2:
+        continue
+    fired = sorted({rid for r in results for rid in r["fired_rules"]})
+    found: dict[str, list[tuple[str, ...]]] = defaultdict(list)
+    for size in range(1, len(fired) + 1):
+        for subset in itertools.combinations(fired, size):
+            left = cause_set(sc["presented_symptoms"], without(subset))
+            if len(left) != 1:
+                continue
+            survivor = next(iter(left))
+            if not any(set(prev) <= set(subset) for prev in found[survivor]):
+                found[survivor].append(subset)
+    for survivor, subsets in sorted(found.items()):
+        for subset in subsets:
+            e1b_rows.append([sc["id"], survivor, len(subset), "{" + ", ".join(subset) + "}"])
+table(["fixture", "surviving candidate", "#rules removed", "rules removed"], e1b_rows)
+write_csv("e1_min_removal_sets.csv", ["fixture", "surviving_cause", "rules_removed_count", "rules_removed"], e1b_rows)
+
+# ---- E2 -------------------------------------------------------------------- #
+emit("## E2. Sensitivity to the rule base: leave-one-rule-out on the 15 fixtures")
+emit()
+loo_rows = []
+per_rule = {rid: Counter() for rid in RULE_IDS}
+base_status = {sc["id"]: status(sc["presented_symptoms"], RULES) for sc in SCENARIOS}
+base_causes = {sc["id"]: cause_set(sc["presented_symptoms"], RULES) for sc in SCENARIOS}
+for rid in RULE_IDS:
+    reduced = without({rid})
+    for sc in SCENARIOS:
+        s = sc["presented_symptoms"]
+        fired = any(rid in r["fired_rules"] for r in core.infer(s, RULES))
+        if not fired:
+            per_rule[rid]["not_fired"] += 1
+            continue
+        new_causes, new_status = cause_set(s, reduced), status(s, reduced)
+        effect = (
+            "cause_lost" if new_causes != base_causes[sc["id"]]
+            else "status_changed" if new_status != base_status[sc["id"]]
+            else "redundant"
+        )
+        per_rule[rid][effect] += 1
+        loo_rows.append([rid, RULE_THEN[rid], sc["id"], fmt(base_causes[sc["id"]]), fmt(new_causes),
+                         base_status[sc["id"]], new_status, effect])
+write_csv(
+    "e2_leave_one_out.csv",
+    ["removed_rule", "rule_concludes", "fixture", "causes_before", "causes_after", "status_before", "status_after", "effect"],
+    loo_rows,
+)
+summary = [
+    [rid, RULE_THEN[rid], c["cause_lost"], c["status_changed"], c["redundant"]]
+    for rid, c in per_rule.items()
+    if c["cause_lost"] or c["status_changed"] or c["redundant"]
+]
+summary.sort(key=lambda r: (-r[2], -r[3], r[0]))
+emit("Rules that fire on at least one fixture (columns count fixtures):")
+emit()
+table(["rule", "concludes", "a candidate is lost", "only the status changes", "no visible effect"], summary)
+status_changes = [row for row in loo_rows if row[7] == "status_changed"]
+if status_changes:
+    emit("Status changes without losing a candidate (conflict resolution flips):")
+    emit()
+    table(["removed", "fixture", "status before", "status after"], [[r[0], r[2], r[5], r[6]] for r in status_changes])
+never_fired = [rid for rid, c in per_rule.items() if c["not_fired"] == len(SCENARIOS)]
+emit(f"Rules that fire on none of the 15 fixtures ({len(never_fired)}): {', '.join(never_fired)}.")
+emit("They are only exercised by symptom sets outside the fixtures, which is why E3 repeats the test on every symptom set.")
+emit()
+
+# ---- E3 -------------------------------------------------------------------- #
+emit("## E3. Leave-one-rule-out over every within-domain symptom set (exhaustive)")
+emit()
+status_count = Counter(status(s, RULES) for s in SETS)
+emit(f"{len(SETS)} distinct symptom sets (every subset of each domain's symptoms). Status over them:")
+emit()
+table(["status", "count", "share"], [[k, v, f"{v / len(SETS):.0%}"] for k, v in status_count.most_common()])
+emit(
+    "These are all combinations, including ones no user would report, and `contradictory` outranks "
+    "every other status, so the shares describe the combinatorial space, not expected traffic."
+)
+emit()
+base_set_causes = {s: cause_set(s, RULES) for s in SETS}
+base_set_fired = {s: {x for r in core.infer(list(s), RULES) for x in r["fired_rules"]} for s in SETS}
+e3_rows = []
+rule_mono_checks = rule_mono_violations = 0  # property 2 in E8: removing a rule never adds a cause
+for rid in RULE_IDS:
+    reduced = without({rid})
+    fires = changes = 0
+    for s in SETS:
+        fires += rid in base_set_fired[s]
+        now = cause_set(s, reduced)
+        changes += now != base_set_causes[s]
+        rule_mono_checks += 1
+        rule_mono_violations += not now <= base_set_causes[s]
+    e3_rows.append([rid, RULE_THEN[rid], fires, changes, "REDUNDANT" if fires and not changes else ""])
+write_csv("e3_exhaustive_rule_importance.csv",
+          ["rule", "concludes", "sets_where_it_fires", "sets_where_removal_changes_causes", "flag"], e3_rows)
+e3_sorted = sorted(e3_rows, key=lambda r: (-r[3], r[0]))
+emit("Most load-bearing rules (symptom sets whose candidates change when the rule is removed):")
+emit()
+table(["rule", "concludes", "fires in # sets", "removal changes candidates in # sets"], [r[:4] for r in e3_sorted[:10]])
+redundant = [r[0] for r in e3_rows if r[4]]
+emit(
+    f"Redundant rules (they fire somewhere, yet removing one never changes any symptom set's candidates): "
+    f"**{len(redundant)}/{len(RULES)}** -- {', '.join(redundant)}."
+)
+emit(
+    "Redundancy is per rule: two rules that back each other up are both flagged but cannot both be dropped. "
+    "Removing one shortens explanations and can change conflict resolution (see E1 M1: R007 is redundant "
+    "for the candidates yet decisive for the status)."
+)
+emit()
+
+# ---- E4 -------------------------------------------------------------------- #
+emit("## E4. Random rule ablation curve (k rules removed at random, 300 trials each)")
+emit()
+rng = random.Random(SEED)
+curve_rows = []
+for k in (0, 4, 8, 12, 16, 20, 24, 32, 40):
+    recall, n_causes, empty, tie = [], [], 0, 0
+    trials = 300
+    for _ in range(trials):
+        reduced = without(rng.sample(RULE_IDS, k))
+        for sc in SCENARIOS:
+            rep = report_of(sc["presented_symptoms"], reduced)
+            now, ref = frozenset(r["cause_id"] for r in rep["results"]), gold[sc["id"]]
+            if ref:
+                recall.append(len(now & ref) / len(ref))
+            n_causes.append(len(now))
+            empty += not now
+            tie += rep["status"] == "ambiguous"
+    cells = trials * len(SCENARIOS)
+    curve_rows.append([k, round(sum(recall) / len(recall), 3), round(sum(n_causes) / cells, 2),
+                       round(empty / cells, 3), round(tie / cells, 3)])
+table(["rules removed", "mean recall of fixture causes", "mean #candidates", "empty diagnosis share", "tie share"],
+      [[r[0], f"{r[1]:.3f}", f"{r[2]:.2f}", f"{r[3]:.1%}", f"{r[4]:.1%}"] for r in curve_rows])
+write_csv("e4_random_ablation_curve.csv",
+          ["rules_removed", "mean_recall", "mean_n_candidates", "empty_share", "tie_share"], curve_rows)
+emit(
+    "Recall is measured against the causes named in each fixture's `expected_behavior` (E0: the full rule base "
+    "matches them on every fixture). Removing rules can only lose conclusions (E8), never invent new ones, "
+    "so the cost of a smaller rule base shows up as silence: ties fall only because empty diagnoses rise."
+)
+emit()
+
+# ---- E5 -------------------------------------------------------------------- #
+emit("## E5. Sensitivity to the evidence: drop one reported symptom at a time")
+emit()
+e5_rows = []
+for sc in SCENARIOS:
+    s = sc["presented_symptoms"]
+    if len(s) < 2:
+        continue
+    base = report_of(s, RULES)
+    for dropped in s:
+        rest = [x for x in s if x != dropped]
+        rep = report_of(rest, RULES)
+        e5_rows.append([sc["id"], dropped, f"{base['status']} {fmt(base['leaders'])}",
+                        f"{rep['status']} {fmt(rep['leaders'])}",
+                        "same" if (rep["status"], rep["leaders"]) == (base["status"], base["leaders"]) else "**changed**"])
+table(["fixture", "symptom withheld", "with all symptoms", "without it", "effect"], e5_rows)
+write_csv("e5_evidence_ablation.csv", ["fixture", "withheld", "full", "without", "effect"],
+          [[c.replace("*", "") for c in row] for row in e5_rows])
+emit("A user who forgets one symptom can move the system to a different status; this is what the follow-up questions in the product must recover.")
+emit()
+
+# ---- E6 -------------------------------------------------------------------- #
+emit("## E6. Conflict-resolution behaviour: do strategies agree?")
+emit()
+
+
+def leaders_under(results: list[dict], group: list[str], strategy: str) -> list[str]:
+    members = [r for r in results if r["cause_id"] in group]
+    if strategy == "rule_order":  # naive baseline: the first-derived rival wins, never a tie
+        return [members[0]["cause_id"]]
+    return core.rank_candidates(members, strategy)[0]
+
+
+strategies = list(core.STRATEGIES) + ["rule_order"]
+e6_rows = []
+cases = [(sc["id"], sc["presented_symptoms"], RULES) for sc in SCENARIOS
+         if any(len(g) > 1 for g in core.group_candidates(core.infer(sc["presented_symptoms"], RULES)))]
+cases.append((SC04["id"] + " minus R007", s04, without({"R007"})))
+for name, s, rules in cases:
+    results = core.infer(s, rules)
+    group = next(g for g in core.group_candidates(results) if len(g) > 1)
+    cells = []
+    for strategy in strategies:
+        lead = leaders_under(results, group, strategy)
+        cells.append(lead[0] if len(lead) == 1 else "tie " + fmt(lead))
+    e6_rows.append([name, fmt(group)] + cells)
+table(["case", "competing causes"] + [f"`{s}`" for s in strategies], e6_rows)
+
+competing = []
+for s in SETS:
+    results = core.infer(list(s), RULES)
+    for g in core.group_candidates(results):
+        if len(g) > 1:
+            competing.append((results, g))
+agg_rows = []
+spec_leaders = [leaders_under(r, g, "specificity") for r, g in competing]
+for strategy in strategies:
+    leads = [leaders_under(r, g, strategy) for r, g in competing]
+    unique = sum(1 for lead in leads if len(lead) == 1)
+    agree = sum(1 for lead, spec in zip(leads, spec_leaders) if len(lead) == 1 and lead == spec)
+    agg_rows.append([f"`{strategy}`", f"{unique}/{len(competing)} ({unique / len(competing):.0%})",
+                     f"{agree}/{len(competing)}" if strategy != "specificity" else "-"])
+emit(f"Over all {len(competing)} competing groups that arise in the exhaustive within-domain sets:")
+emit()
+table(["strategy", "groups with a unique leader", "same unique leader as `specificity`"], agg_rows)
+write_csv("e6_conflict_resolution.csv", ["case", "competing"] + strategies, e6_rows)
+emit(
+    "Reading. The rule base contains no knowledge that ranks causes, so any preference comes from a strategy "
+    "outside the logic, and the strategies disagree: on the Wi-Fi fixture `rule_count` prefers CAUSE03 only "
+    "because more (redundant) rules conclude it, `rule_order` silently prefers whichever rule is listed first, "
+    "while `specificity` and `coverage` honestly report a tie. After removing R007 the principled strategies "
+    "agree on CAUSE02 and `rule_count` flips to a tie. This is why the core never resolves silently: it reports "
+    "the strategy, the ranking, and every tie."
+)
+emit()
+
+# ---- E7 -------------------------------------------------------------------- #
+emit("## E7. Controlled comparison against naive baseline engines")
+emit()
+
+
+def baseline_first_match(symptoms, rules) -> frozenset[str]:
+    """Decision list / if-elif chain: stop at the first rule whose premises hold."""
+    present = set(symptoms)
+    for rule in rules:
+        if rule["if"] and set(rule["if"]) <= present:
+            return frozenset({rule["then"]})
+    return frozenset()
+
+
+def baseline_best_partial(symptoms, rules) -> frozenset[str]:
+    """Nearest-pattern guesser: the cause of the rule with the largest share of premises present."""
+    present = set(symptoms)
+    best, best_score = None, 0.0
+    for rule in rules:
+        if rule["if"]:
+            score = len(set(rule["if"]) & present) / len(rule["if"])
+            if score > best_score:
+                best, best_score = rule["then"], score
+    return frozenset({best}) if best else frozenset()
+
+
+methods = {
+    "forward chaining (ours)": lambda s, r: cause_set(s, r),
+    "first-match baseline": baseline_first_match,
+    "best-partial-match baseline": baseline_best_partial,
+}
+
+
+def evaluate(inputs: list[tuple[str, ...]], reference) -> list[list]:
+    rows = []
+    for name, method in methods.items():
+        recall, hidden, guesses, wrong_order = [], 0, 0, 0
+        for s in inputs:
+            got, ref = method(s, RULES), reference(s)
+            if ref:
+                recall.append(len(got & ref) / len(ref))
+            hidden += len(ref) >= 2 and len(got) < len(ref)
+            guesses += bool(got - ref)
+            wrong_order += got != method(s, list(reversed(RULES)))
+        rows.append([name, f"{sum(recall) / len(recall):.3f}", hidden, guesses, wrong_order])
+    return rows
+
+
+headers = ["method", "mean recall", "inputs with ≥2 supported causes where some are hidden",
+           "inputs with an unsupported guess", "inputs whose answer changes if the rule file is reversed"]
+emit("On the 15 fixtures (reference = causes named in `expected_behavior`):")
+emit()
+fixture_inputs = [tuple(sc["presented_symptoms"]) for sc in SCENARIOS]
+fixture_ref = {tuple(sc["presented_symptoms"]): gold[sc["id"]] for sc in SCENARIOS}
+e7a = evaluate(fixture_inputs, lambda s: fixture_ref[s])
+table(headers, e7a)
+emit(f"On all {len(SETS)} within-domain symptom sets (reference = every cause whose rule premises are all present):")
+emit()
+e7b = evaluate(SETS, lambda s: frozenset(r["then"] for r in RULES if r["if"] and set(r["if"]) <= set(s)))
+table(headers, e7b)
+write_csv("e7_baselines.csv", ["inputs"] + headers, [["fixtures"] + r for r in e7a] + [["exhaustive"] + r for r in e7b])
+flagged = sum(1 for s in SETS if core.detect_conflicts(list(s), CONFLICTS))
+emit(
+    f"Only our engine also reports ties and flags contradictions (with `conflicts.json`: {flagged} of the "
+    f"{len(SETS)} sets, including `{SC07['id']}`); neither baseline can, because each returns one bare answer. "
+    "First-match hides rivals and depends on rule order; partial-match guesses a cause from incomplete "
+    "evidence, which the brief explicitly forbids."
+)
+emit()
+
+# ---- E8 -------------------------------------------------------------------- #
+emit("## E8. Formal boundaries of a monotonic, deterministic rule system")
+emit()
+all_ids = [s["id"] for s in SYMPTOMS]
+checked = violations = 0
+for s in SETS:
+    for extra in all_ids:
+        checked += 1
+        violations += not base_set_causes[s] <= cause_set(list(s) + [extra], RULES)
+shuffle_rng = random.Random(SEED)
+order_checks = order_diffs = trace_diffs = 0
+base_traces = {s: [x["rule"] for x in core.run_engine(list(s), RULES)] for s in SETS}
+for _ in range(100):
+    shuffled = RULES[:]
+    shuffle_rng.shuffle(shuffled)
+    for s in SETS:
+        order_checks += 1
+        trace = core.run_engine(list(s), shuffled)
+        order_diffs += frozenset(x["derived"] for x in trace) != base_set_causes[s]
+        trace_diffs += [x["rule"] for x in trace] != base_traces[s]
+emit("**Model.** Each rule `p1 ∧ … ∧ pk → c` is a definite Horn clause over propositional atoms (symptoms and "
+     "causes). For reported symptoms S, forward chaining computes F(S), the least fixpoint of "
+     "T(X) = S ∪ {c | (P → c) ∈ R, P ⊆ X}; each pass fires at least one new rule or stops, so it terminates "
+     "within |R| + 1 passes.")
+emit()
+emit("1. **Monotonicity in the evidence.** S ⊆ S′ ⇒ F(S) ⊆ F(S′): T is monotone in S, hence so is its least "
+     f"fixpoint. Checked exhaustively: {checked} (set, added symptom) pairs, **{violations}** violations.")
+emit("2. **Monotonicity in the rules.** R ⊆ R′ ⇒ F_R(S) ⊆ F_R′(S): removing a rule can only lose conclusions. "
+     f"Checked with every single-rule removal over every set (E3): {rule_mono_checks} cases, "
+     f"**{rule_mono_violations}** where a cause appeared.")
+emit("3. **Determinism / order independence.** The least fixpoint is unique, so the *conclusions* cannot depend "
+     f"on rule order; only the *trace* can. Shuffling the rule file 100 times over all {len(SETS)} sets: "
+     f"candidate sets differed in **{order_diffs}/{order_checks}** runs, traces in {trace_diffs}/{order_checks}. "
+     "The explanation order is therefore an artefact of how the file is written, not of the logic.")
+emit("4. **No contradiction is expressible.** Every rule has a positive head, so the all-true assignment satisfies "
+     "the whole KB: it is always consistent and can never derive ⊥. Incompatibility needs *integrity constraints* "
+     "of the form `a ∧ b → ⊥`, which is exactly what `conflicts.json` adds; detecting a violation is a separate "
+     "check outside the rules.")
+emit("5. **No retraction.** Even when a contradiction is detected, (1) guarantees that no conclusion is withdrawn: "
+     "the engine can only *flag* the report. Withdrawing a conclusion requires non-monotonic machinery "
+     "(negation as failure, default logic, a truth-maintenance system) or graded belief such as MYCIN certainty "
+     "factors, where disconfirming evidence lowers belief [Shortliffe & Buchanan 1975].")
+emit("6. **No preference is expressible.** Nothing in the KB says two causes exclude each other or that one is "
+     "likelier, so ties like the Wi-Fi fixture can only be broken by an extra-logical strategy (E6) or by asking "
+     "for more evidence.")
+emit()
+s07 = SC07["presented_symptoms"]
+steps = []
+for upto in range(1, len(s07) + 1):
+    part = s07[:upto]
+    rep = report_of(part, RULES)
+    steps.append([" + ".join(part), fmt(r["cause_id"] for r in rep["results"]), rep["status"],
+                  ", ".join(c["id"] for c in rep["conflicts"]) or "-"])
+emit(f"`{SC07['id']}`, evidence added one symptom at a time:")
+emit()
+table(["evidence so far", "candidates", "status", "conflicts flagged"], steps)
+emit("No step withdraws a candidate (property 1). The contradiction becomes visible only through the integrity "
+     "constraints (property 4), and both printer causes remain listed (property 5).")
+emit()
+
+# ---- E9 -------------------------------------------------------------------- #
+emit("## E9. Audit: rules and fixtures that depend on a contradictory pair")
+emit()
+audit = [[r["id"], r["then"], c["id"], " + ".join(c["symptoms"])]
+         for r in RULES for c in CONFLICTS if set(c["symptoms"]) <= set(r["if"])]
+table(["rule", "concludes", "conflict", "pair inside the rule's `if`"], audit or [["(none)", "", "", ""]])
+emit("A rule whose premises contain an incompatible pair can only fire on contradictory input.")
+emit()
+s02 = next(s for s in SCENARIOS if s["id"].startswith("SC02"))
+domain_ids = [x["id"] for x in SYMPTOMS if x["domain"] == s02["domain"]]
+sugg = core.suggest_followups(s02["presented_symptoms"], RULES, CONFLICTS, candidates=domain_ids)
+emit(f"Follow-up answers for `{s02['id']}` ({s02['presented_symptoms']}), restricted to its domain:")
+emit()
+table(["ask about", "status if confirmed", "preferred cause(s)", "new rules"],
+      [[x["symptom"], x["status"], fmt(x["leaders"]), ",".join(x["new_rules"])] for x in sugg])
+emit("Every printer symptom that would move the diagnosis toward CAUSE14 is incompatible with the current report: "
+     "the fixture's own disambiguation question can only be answered with the contradiction that SC07 warns about.")
+emit()
+
+# ---- figures --------------------------------------------------------------- #
+try:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    top = e3_sorted[:15]
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    ax.barh([r[0] + " -> " + r[1] for r in reversed(top)], [r[3] for r in reversed(top)], color="#3b6ea5")
+    ax.set_xlabel("# within-domain symptom sets whose candidates change if the rule is removed")
+    ax.set_title("Most load-bearing rules (E3)")
+    fig.tight_layout()
+    fig.savefig(OUT / "e3_rule_importance.png", dpi=150)
+    plt.close(fig)
+
+    ks = [r[0] for r in curve_rows]
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(ks, [r[1] for r in curve_rows], marker="o", label="mean recall of fixture causes")
+    ax.plot(ks, [r[3] for r in curve_rows], marker="s", label="empty diagnosis share")
+    ax.plot(ks, [r[4] for r in curve_rows], marker="^", label="tie share")
+    ax.set_xlabel("rules removed at random (of 48)")
+    ax.set_ylim(0, 1.05)
+    ax.grid(alpha=0.3)
+    ax.legend()
+    ax.set_title("Random rule ablation (E4, 300 trials per point)")
+    fig.tight_layout()
+    fig.savefig(OUT / "e4_ablation_curve.png", dpi=150)
+    plt.close(fig)
+    emit("Figures: `experiments/results/e3_rule_importance.png`, `experiments/results/e4_ablation_curve.png`")
+except ImportError:
+    emit("(matplotlib not installed -- figures skipped)")
+
+OUT.mkdir(parents=True, exist_ok=True)
+(OUT / "ablation_report.md").write_text("\n".join(REPORT) + "\n", encoding="utf-8")

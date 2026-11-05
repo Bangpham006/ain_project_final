@@ -1,0 +1,7 @@
+﻿fixture,surviving_cause,rules_removed_count,rules_removed
+SC02_single_cause_printer_offline,CAUSE13,1,{R036}
+SC02_single_cause_printer_offline,CAUSE14,2,"{R034, R035}"
+SC04_ambiguous_wifi_drop,CAUSE02,3,"{R007, R008, R043}"
+SC04_ambiguous_wifi_drop,CAUSE03,2,"{R005, R042}"
+SC07_contradictory_printer,CAUSE13,2,"{R036, R041}"
+SC07_contradictory_printer,CAUSE14,2,"{R034, R039}"

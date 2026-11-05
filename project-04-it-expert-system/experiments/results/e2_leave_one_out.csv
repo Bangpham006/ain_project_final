@@ -1,0 +1,29 @@
+﻿removed_rule,rule_concludes,fixture,causes_before,causes_after,status_before,status_after,effect
+R001,CAUSE01,SC01_single_cause_portal_loop,{CAUSE01},{CAUSE01},single_cause,single_cause,redundant
+R002,CAUSE01,SC01_single_cause_portal_loop,{CAUSE01},{CAUSE01},single_cause,single_cause,redundant
+R003,CAUSE01,SC01_single_cause_portal_loop,{CAUSE01},{CAUSE01},single_cause,single_cause,redundant
+R005,CAUSE02,SC04_ambiguous_wifi_drop,"{CAUSE02, CAUSE03}","{CAUSE02, CAUSE03}",ambiguous,resolved,status_changed
+R006,CAUSE02,SC13_wifi_laptop_only,{CAUSE02},{},single_cause,insufficient_evidence,cause_lost
+R007,CAUSE03,SC04_ambiguous_wifi_drop,"{CAUSE02, CAUSE03}","{CAUSE02, CAUSE03}",ambiguous,resolved,status_changed
+R008,CAUSE03,SC04_ambiguous_wifi_drop,"{CAUSE02, CAUSE03}","{CAUSE02, CAUSE03}",ambiguous,ambiguous,redundant
+R010,CAUSE04,SC03_single_cause_lms_not_enrolled,{CAUSE04},{},single_cause,insufficient_evidence,cause_lost
+R013,CAUSE05,SC15_lms_session_timeout,{CAUSE05},{CAUSE05},single_cause,single_cause,redundant
+R014,CAUSE05,SC15_lms_session_timeout,{CAUSE05},{CAUSE05},single_cause,single_cause,redundant
+R015,CAUSE06,SC12_submission_size_exceeded,{CAUSE06},{},single_cause,insufficient_evidence,cause_lost
+R017,CAUSE07,SC08_lab_grub_error,{CAUSE07},{},single_cause,insufficient_evidence,cause_lost
+R019,CAUSE08,SC09_lab_no_network,{CAUSE08},{},single_cause,insufficient_evidence,cause_lost
+R022,CAUSE09,SC10_projector_hdmi,{CAUSE09},{},single_cause,insufficient_evidence,cause_lost
+R025,CAUSE10,SC11_password_expired,{CAUSE10},{},single_cause,insufficient_evidence,cause_lost
+R027,CAUSE11,SC05_ambiguous_account_locked,{CAUSE11},{CAUSE11},single_cause,single_cause,redundant
+R028,CAUSE11,SC05_ambiguous_account_locked,{CAUSE11},{CAUSE11},single_cause,single_cause,redundant
+R029,CAUSE11,SC05_ambiguous_account_locked,{CAUSE11},{CAUSE11},single_cause,single_cause,redundant
+R030,CAUSE12,SC14_office365_unlicensed,{CAUSE12},{},single_cause,insufficient_evidence,cause_lost
+R034,CAUSE13,SC02_single_cause_printer_offline,"{CAUSE13, CAUSE14}","{CAUSE13, CAUSE14}",resolved,resolved,redundant
+R034,CAUSE13,SC07_contradictory_printer,"{CAUSE13, CAUSE14}","{CAUSE13, CAUSE14}",contradictory,contradictory,redundant
+R035,CAUSE13,SC02_single_cause_printer_offline,"{CAUSE13, CAUSE14}","{CAUSE13, CAUSE14}",resolved,ambiguous,status_changed
+R036,CAUSE14,SC02_single_cause_printer_offline,"{CAUSE13, CAUSE14}",{CAUSE13},resolved,single_cause,cause_lost
+R036,CAUSE14,SC07_contradictory_printer,"{CAUSE13, CAUSE14}","{CAUSE13, CAUSE14}",contradictory,contradictory,redundant
+R039,CAUSE13,SC07_contradictory_printer,"{CAUSE13, CAUSE14}","{CAUSE13, CAUSE14}",contradictory,contradictory,redundant
+R041,CAUSE14,SC07_contradictory_printer,"{CAUSE13, CAUSE14}","{CAUSE13, CAUSE14}",contradictory,contradictory,redundant
+R042,CAUSE02,SC04_ambiguous_wifi_drop,"{CAUSE02, CAUSE03}","{CAUSE02, CAUSE03}",ambiguous,ambiguous,redundant
+R043,CAUSE03,SC04_ambiguous_wifi_drop,"{CAUSE02, CAUSE03}","{CAUSE02, CAUSE03}",ambiguous,ambiguous,redundant

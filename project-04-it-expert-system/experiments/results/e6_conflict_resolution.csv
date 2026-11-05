@@ -1,0 +1,5 @@
+﻿case,competing,specificity,coverage,rule_count,rule_order
+SC02_single_cause_printer_offline,"{CAUSE13, CAUSE14}",CAUSE13,CAUSE13,CAUSE13,CAUSE13
+SC04_ambiguous_wifi_drop,"{CAUSE02, CAUSE03}","tie {CAUSE02, CAUSE03}","tie {CAUSE02, CAUSE03}",CAUSE03,CAUSE02
+SC07_contradictory_printer,"{CAUSE13, CAUSE14}","tie {CAUSE13, CAUSE14}","tie {CAUSE13, CAUSE14}","tie {CAUSE13, CAUSE14}",CAUSE13
+SC04_ambiguous_wifi_drop minus R007,"{CAUSE02, CAUSE03}",CAUSE02,CAUSE02,"tie {CAUSE02, CAUSE03}",CAUSE02

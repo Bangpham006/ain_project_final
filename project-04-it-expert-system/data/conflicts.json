@@ -1,0 +1,29 @@
+{
+  "conflicts": [
+    {
+      "id": "X01",
+      "symptoms": ["SYM22", "SYM26"],
+      "reason": "Printer reported Offline, yet a job printed successfully from another PC on the same network (the tension named in SC07)."
+    },
+    {
+      "id": "X02",
+      "symptoms": ["SYM22", "SYM25"],
+      "reason": "Same principle as X01: an Offline printer cannot have produced faded or streaky output."
+    },
+    {
+      "id": "X03",
+      "symptoms": ["SYM22", "SYM24"],
+      "reason": "Same principle as X01: an Offline printer cannot have produced blank pages."
+    },
+    {
+      "id": "X04",
+      "symptoms": ["SYM23", "SYM24"],
+      "reason": "Same principle as X01: a job that never leaves the queue cannot also have printed blank pages."
+    },
+    {
+      "id": "X05",
+      "symptoms": ["SYM23", "SYM25"],
+      "reason": "Same principle as X01: a job that never leaves the queue cannot also have printed faded output."
+    }
+  ]
+}

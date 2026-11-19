@@ -1,0 +1,5 @@
+﻿Method,Candidate Recall (220 sets),Order Invariance (100 perms),Unsupported Guesses,Contradiction Recall,"Batch Time (ms, 220 sets)"
+Baseline 1: First-Match,58.4 +/- 0.0%,63.6 +/- 8.4%,0/220,0/40 (0%),0.39 +/- 0.04
+Baseline 2: Best-Partial-Match,58.4 +/- 0.0%,62.7 +/- 8.4%,4/220,0/40 (0%),2.32 +/- 0.11
+Midterm Core (infer + explain),100.0 +/- 0.0%,100.0 +/- 0.0%,0/220,0/40 (0%),9.52 +/- 0.66
+Final Product (diagnose + conflicts + follow-ups),100.0 +/- 0.0%,100.0 +/- 0.0%,0/220,40/40 (100%),11.45 +/- 0.58

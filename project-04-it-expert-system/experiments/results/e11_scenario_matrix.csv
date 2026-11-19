@@ -1,0 +1,10 @@
+﻿ID,Scenario,Observed behaviour,Outcome
+S1,"SC01: Portal redirect loop (SYM01, SYM06) [Typical Single-Cause]",status=single_cause; candidates={CAUSE01}; leaders={CAUSE01}; clusters=1; conflicts=none,Pass
+S2,"SC02: Printer offline + queued job (SYM22, SYM23) [Resolved Rivalry]","status=resolved; candidates={CAUSE13, CAUSE14}; leaders={CAUSE13}; clusters=1; conflicts=none",Pass (KB label swap flagged)
+S3,"SC04: Lab C1 Wi-Fi drop (SYM03, SYM04) [Ambiguous Tie + Follow-Up]","status=ambiguous; candidates={CAUSE02, CAUSE03}; leaders={CAUSE02, CAUSE03}; clusters=1; conflicts=none",Pass (1-turn disambiguation)
+S4,SC06: Empty symptom report ([]) on FIT LMS [Missing Info Edge Case],status=insufficient_evidence; candidates={none}; leaders={none}; clusters=0; conflicts=none,Pass (Abstains + asks SYM07-SYM10)
+S5,Partial evidence: SYM02 alone [Unmatched Single Premise],status=insufficient_evidence; candidates={none}; leaders={none}; clusters=0; conflicts=none,Pass (Abstains + asks SYM04/SYM05)
+S6,"SC07: Offline + faded + prints on staff PC (SYM22, SYM25, SYM26) [Contradiction]","status=contradictory; candidates={CAUSE13, CAUSE14}; leaders={CAUSE13, CAUSE14}; clusters=1; conflicts=X01, X02","Pass (Flags X01, X02; retains causes)"
+S7,"Multi-Fault MF01: Wi-Fi loop + LMS missing course (SYM01, SYM06, SYM07)","status=multi_fault; candidates={CAUSE01, CAUSE04}; leaders={CAUSE01, CAUSE04}; clusters=2; conflicts=none",Pass (2 disjoint clusters)
+S8,"Stress MF02: 3-domain concurrent outage (SYM03, SYM04, SYM05, SYM12, SYM18)","status=multi_fault; candidates={CAUSE02, CAUSE03, CAUSE07, CAUSE12}; leaders={CAUSE02, CAUSE07, CAUSE12}; clusters=3; conflicts=none","Pass (3 clusters; CAUSE02>CAUSE03, CAUSE07, CAUSE12)"
+S9,Out-of-scope / unknown IDs (['SYM999']) [Invalid Input Guard],status=insufficient_evidence; candidates={none}; leaders={none}; clusters=0; conflicts=none,Pass (Safely ignored; insufficient_evidence)

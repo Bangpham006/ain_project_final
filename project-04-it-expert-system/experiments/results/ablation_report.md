@@ -248,4 +248,4 @@ Follow-up answers for `SC02_single_cause_printer_offline` (['SYM22', 'SYM23']), 
 
 Every printer symptom that would move the diagnosis toward CAUSE14 is incompatible with the current report: the fixture's own disambiguation question can only be answered with the contradiction that SC07 warns about.
 
-(matplotlib not installed -- figures skipped)
+Figures: `experiments/results/e3_rule_importance.png`, `experiments/results/e4_ablation_curve.png`
